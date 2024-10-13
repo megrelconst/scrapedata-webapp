@@ -47,17 +47,14 @@ class QueryRequest(BaseModel):
 @app.post("/query")
 def query_openai(request: QueryRequest):
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": request.prompt}
-            ],
+        response = openai.Completion.create(
+            model="text-davinci-003",
+            prompt=request.prompt,
             max_tokens=100
         )
-        return {"response": response.choices[0].message["content"].strip()}
+        return {"response": response.choices[0].text.strip()}
     except Exception as e:
         return {"error": str(e)}
-
 
 # Endpoint to get the scraped data
 @app.get("/scraped-data")
