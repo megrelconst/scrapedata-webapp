@@ -54,11 +54,8 @@ def query_openai(request: QueryRequest):
             ],
             max_tokens=100
         )
-        # Correcting the response access based on OpenAI's response structure
-        message_content = response['choices'][0]['message']['content']
-        return {"response": message_content.strip()}
-    except KeyError as e:
-        return {"error": f"Key error while accessing response content: {str(e)}"}
+        print(response)  # Debugging: Print the full response from OpenAI
+        return {"response": response['choices'][0]['message']['content'].strip()}
     except Exception as e:
         return {"error": str(e)}
 
