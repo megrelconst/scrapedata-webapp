@@ -4,9 +4,13 @@ from scraper.scraper import scrape_domain, save_data_to_json
 import json
 import os
 import openai
+import logging
 
 # Create an instance of FastAPI
 app = FastAPI()
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 # Load default configuration from config.json
 def load_config():
@@ -54,9 +58,13 @@ def query_openai(request: QueryRequest):
             ],
             max_tokens=100
         )
-        print(response)  # Debugging: Print the full response from OpenAI
+        logging.info(f"OpenAI Response: {response}")  # Log the full response from OpenAI for debugging
         return {"response": response['choices'][0]['message']['content'].strip()}
+    except KeyError as e:
+        logging.error(f"KeyError accessing response content: {str(e)}")
+        return {"error": f"KeyError: {str(e)}"}
     except Exception as e:
+        logging.error(f"Exception occurred: {str(e)}")
         return {"error": str(e)}
 
 # Endpoint to get the scraped data
