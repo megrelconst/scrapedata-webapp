@@ -7,6 +7,8 @@ import openai
 import logging
 from openai import OpenAI
 
+client = OpenAI()
+
 # Create an instance of FastAPI
 app = FastAPI()
 
@@ -19,15 +21,6 @@ def load_config():
         return json.load(f)
 
 config = load_config()
-
-# Set up OpenAI client with organization and project information
-client = OpenAI(
-    organization=os.getenv("OPENAI_ORGANIZATION"),
-    project=os.getenv("OPENAI_PROJECT_ID")
-)
-
-# Set up OpenAI API key from environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Root endpoint to handle requests to the base URL
 @app.get("/")
