@@ -47,12 +47,15 @@ class QueryRequest(BaseModel):
 @app.post("/query")
 def query_openai(request: QueryRequest):
     try:
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=request.prompt,
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": request.prompt}
+            ],
             max_tokens=100
         )
-        return {"response": response.choices[0].text.strip()}
+        # Correcting the way the response is accessed
+        return {"response": response["choices"][0]["message"]["content"].strip()}
     except Exception as e:
         return {"error": str(e)}
 
