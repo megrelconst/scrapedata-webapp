@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
 from scraper.scraper import scrape_domain, save_data_to_json
 import json
 import os
@@ -38,13 +39,17 @@ def scrape(max_depth: int = 2):
     
     return {"message": "Scraping completed successfully.", "pages_scraped": len(data)}
 
+# Request model for query
+class QueryRequest(BaseModel):
+    prompt: str
+
 # Endpoint to query OpenAI with a prompt
 @app.post("/query")
-def query_openai(prompt: str):
+def query_openai(request: QueryRequest):
     try:
         response = openai.Completion.create(
             engine="text-davinci-003",
-            prompt=prompt,
+            prompt=request.prompt,
             max_tokens=100
         )
         return {"response": response.choices[0].text.strip()}
