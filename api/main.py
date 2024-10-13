@@ -48,7 +48,7 @@ class QueryRequest(BaseModel):
 def query_openai(request: QueryRequest):
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Use the latest model name, such as "gpt-3.5-turbo"
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": request.prompt}
             ],
@@ -57,6 +57,7 @@ def query_openai(request: QueryRequest):
         return {"response": response.choices[0].message["content"].strip()}
     except Exception as e:
         return {"error": str(e)}
+
 
 # Endpoint to get the scraped data
 @app.get("/scraped-data")
