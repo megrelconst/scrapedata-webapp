@@ -54,10 +54,12 @@ def query_openai(request: QueryRequest):
             ],
             max_tokens=100
         )
-        # Correcting the way the response is accessed
-        return {"response": response["choices"][0]["message"]["content"].strip()}
+        # Correcting the way the response is accessed based on OpenAI's latest response format
+        return {"response": response['choices'][0]['message']['content'].strip()}
     except Exception as e:
         return {"error": str(e)}
+
+
 
 # Endpoint to get the scraped data
 @app.get("/scraped-data")
