@@ -72,12 +72,3 @@ def scrape_domain(domain_url, max_depth=None):
 def save_data_to_json(data, filename="scraped_data.json"):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-
-@app.get("/scraped-data")
-def get_scraped_data():
-    try:
-        with open("scraped_data.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data
-    except FileNotFoundError:
-        return {"error": "No scraped data found."}
