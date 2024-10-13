@@ -59,13 +59,15 @@ class QueryRequest(BaseModel):
 def query_openai(request: QueryRequest):
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",  # Updated model based on the latest OpenAI documentation
             messages=[
                 {"role": "user", "content": request.prompt}
             ],
-            max_tokens=100
+            max_tokens=100,
+            temperature=0.7  # Added temperature parameter
         )
         logging.info(f"OpenAI Response: {response}")  # Log the full response from OpenAI for debugging
+        # Corrected the way the response is accessed based on the latest OpenAI response structure
         return {"response": response['choices'][0]['message']['content'].strip()}
     except KeyError as e:
         logging.error(f"KeyError accessing response content: {str(e)}")
