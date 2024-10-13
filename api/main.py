@@ -4,6 +4,7 @@ import json
 import os
 import openai
 
+# Create an instance of FastAPI
 app = FastAPI()
 
 # Load default configuration from config.json
@@ -49,3 +50,13 @@ def query_openai(prompt: str):
         return {"response": response.choices[0].text.strip()}
     except Exception as e:
         return {"error": str(e)}
+
+# Endpoint to get the scraped data
+@app.get("/scraped-data")
+def get_scraped_data():
+    try:
+        with open("scraped_data.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except FileNotFoundError:
+        return {"error": "No scraped data found."}
