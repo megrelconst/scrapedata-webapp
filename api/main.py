@@ -30,7 +30,7 @@ def generate_embedding(text):
         input=text,
         model="text-embedding-3-small"
     )
-    return response['data'][0]['embedding']
+    return response.data[0].embedding  # Updated to use dot notation to access response data
 
 # Request model for query
 class QueryRequest(BaseModel):

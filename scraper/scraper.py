@@ -19,7 +19,7 @@ def generate_embedding(text):
         input=text,
         model="text-embedding-3-small"
     )
-    return response['data'][0]['embedding']
+    return response.data[0].embedding  # Updated to use dot notation to access response data
 
 # Scrape a single website page
 def scrape_website(url):
