@@ -52,24 +52,65 @@ class QueryRequest(BaseModel):
 def get_relevant_context(scraped_data, prompt):
     context = ""
     for item in scraped_data:
-        # Search titles, headings, and paragraphs for relevance to the prompt
+        # Search titles, headings, paragraphs, and links for relevance to the prompt
         if isinstance(item.get('title', ''), str) and prompt.lower() in item.get('title', '').lower():
             context += f"Title: {item['title']}\n"
         if isinstance(item.get('headings', {}), dict):
-            for heading in item['headings'].values():
-                if isinstance(heading, list):
-                    for sub_heading in heading:
+            for heading_key, heading_value in item['headings'].items():
+                if isinstance(heading_value, list):
+                    for sub_heading in heading_value:
                         if prompt.lower() in sub_heading.lower():
-                            context += f"Heading: {sub_heading}\n"
-                elif isinstance(heading, str) and prompt.lower() in heading.lower():
-                    context += f"Heading: {heading}\n"
+                            context += f"{heading_key}: {sub_heading}\n"
+                elif isinstance(heading_value, str) and prompt.lower() in heading_value.lower():
+                    context += f"{heading_key}: {heading_value}\n"
         relevant_paragraphs = [p for p in item.get('paragraphs', []) if isinstance(p, str) and prompt.lower() in p.lower()]
         if relevant_paragraphs:
-            context += f"Paragraphs: {relevant_paragraphs}\n"
-        # Limit the size of the context to avoid exceeding token limits
-        if len(context) > 2000:
+            context += f"Paragraphs: {' '.join(relevant_paragraphs)}\n"
+
+        relevant_links = [link for link in item.get('links', []) if isinstance(link, str) and prompt.lower() in link.lower()]
+        if relevant_links:
+            context += f"Links: {', '.join(relevant_links)}\n"
+
+        # Increase the size limit or dynamically handle it to ensure more relevant context is gathered
+        if len(context) > 5000:  # Increased context size limit to 5000 characters
             break
+
     return context if context else "No relevant context found."
+
+# Endpoint to query OpenAI with a prompt
+@app.post("/query")
+def query_openai(request: QueryRequest):
+    try:
+        # Load scraped data
+        try:
+            with open("scraped_data.json", "r", encoding="utf-8") as f:
+                scraped_data = json.load(f)
+        except FileNotFoundError:
+            return {"error": "No scraped data found."}
+
+        # Get relevant context from the scraped data
+        context = get_relevant_context(scraped_data, request.prompt)
+
+        # Update the prompt to include the relevant context
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant. Use only the given context to answer questions, and if the information is not available, say 'I don't have the information in my dataset.'"},
+            {"role": "user", "content": f"Context: {context}\n\nQuestion: {request.prompt}"}
+        ]
+
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
+        )
+        logging.info(f"OpenAI Response: {completion}")  # Log the full response from OpenAI for debugging
+
+        return {"response": completion.choices[0].message.content}  # Corrected to access message content
+    except KeyError as e:
+        logging.error(f"KeyError accessing response content: {str(e)}")
+        return {"error": f"KeyError: {str(e)}"}
+    except Exception as e:
+        logging.error(f"Exception occurred: {str(e)}")
+        return {"error": str(e)}
+
 
 # Endpoint to query OpenAI with a prompt
 @app.post("/query")
