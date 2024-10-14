@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from scraper.scraper import scrape_domain, save_data_to_json
 import json
 import os
-import logging
 from openai import OpenAI
+import logging
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -28,70 +28,9 @@ config = load_config()
 def generate_embedding(text):
     response = client.embeddings.create(
         input=text,
-        model="text-embedding-ada-002"
+        model="text-embedding-3-small"
     )
     return response['data'][0]['embedding']
-
-# Root endpoint to handle requests to the base URL
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Scrape Data Web App! Use /scrape to start scraping."}
-
-# Endpoint to scrape data
-@app.get("/scrape")
-def scrape(max_depth: int = 2):
-    # Use the default URL from the configuration file
-    url = config.get("default_url")
-    
-    # Ensure a URL is provided in the configuration file
-    if not url:
-        return {"error": "No default URL specified in config.json"}
-
-    # Scrape the domain
-    data = scrape_domain(url, max_depth=max_depth)
-
-    # Deduplicate and organize data
-    unique_data = {
-        "titles": set(),
-        "headings": set(),
-        "paragraphs": set(),
-        "links": set()
-    }
-
-    for item in data:
-        if 'title' in item and item['title']:
-            unique_data['titles'].add(item['title'])
-        if 'headings' in item:
-            for heading_list in item['headings'].values():
-                if isinstance(heading_list, list):
-                    unique_data['headings'].update(heading_list)
-                elif isinstance(heading_list, str):
-                    unique_data['headings'].add(heading_list)
-        if 'paragraphs' in item:
-            unique_data['paragraphs'].update(item['paragraphs'])
-        if 'links' in item:
-            unique_data['links'].update(item['links'])
-
-    # Convert sets back to lists for JSON serialization
-    for key in unique_data:
-        unique_data[key] = list(unique_data[key])
-
-    # Generate embeddings for the paragraphs, titles, and headings
-    embedded_data = []
-    for key in ["titles", "headings", "paragraphs"]:
-        for text in unique_data[key]:
-            embedding = generate_embedding(text)
-            embedded_data.append({
-                "text": text,
-                "embedding": embedding,
-                "type": key
-            })
-
-    # Save deduplicated, organized, and embedded data
-    with open("embedded_data.json", "w", encoding="utf-8") as f:
-        json.dump(embedded_data, f, ensure_ascii=False, indent=4)
-    
-    return {"message": "Scraping completed successfully.", "pages_scraped": len(data)}
 
 # Request model for query
 class QueryRequest(BaseModel):
@@ -111,6 +50,27 @@ def get_relevant_context(embedded_data, query_embedding, top_k=3):
     relevant_context = "\n".join([texts[i] for i in reversed(top_indices)])
 
     return relevant_context
+
+# Root endpoint to handle requests to the base URL
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Scrape Data Web App! Use /scrape to start scraping."}
+
+# Endpoint to scrape data
+@app.get("/scrape")
+def scrape(max_depth: int = 2):
+    # Use the default URL from the configuration file
+    url = config.get("default_url")
+    
+    # Ensure a URL is provided in the configuration file
+    if not url:
+        return {"error": "No default URL specified in config.json"}
+
+    # Scrape the domain
+    data = scrape_domain(url, max_depth=max_depth)
+    save_data_to_json(data)
+    
+    return {"message": "Scraping completed successfully.", "pages_scraped": len(data)}
 
 # Endpoint to query OpenAI with a prompt
 @app.post("/query")

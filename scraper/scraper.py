@@ -2,11 +2,11 @@ from bs4 import BeautifulSoup
 import requests
 import json
 import os
-import openai
+from openai import OpenAI
 from datetime import datetime
 
-# Set up OpenAI API key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set up OpenAI client
+client = OpenAI()
 
 # Load configuration from config.json
 def load_config():
@@ -15,9 +15,9 @@ def load_config():
 
 # Function to generate embeddings using OpenAI API
 def generate_embedding(text):
-    response = openai.Embedding.create(
+    response = client.embeddings.create(
         input=text,
-        model="text-embedding-ada-002"
+        model="text-embedding-3-small"
     )
     return response['data'][0]['embedding']
 
@@ -63,6 +63,7 @@ def scrape_domain(domain_url, max_depth=None):
     visited = set()
     to_visit = [domain_url]
     scraped_data = []
+    embedded_data = []
 
     current_depth = 0
 
@@ -76,26 +77,33 @@ def scrape_domain(domain_url, max_depth=None):
                     scraped_data.append(data)
                     # Collect more links to scrape
                     next_to_visit.extend(data.get("links", []))
+
+                    # Generate embeddings for title, headings, paragraphs
+                    if data.get("title"):
+                        embedded_data.append({
+                            "text": data["title"],
+                            "embedding": generate_embedding(data["title"]),
+                            "type": "title"
+                        })
+                    for heading_list in data.get("headings", {}).values():
+                        for heading in heading_list:
+                            embedded_data.append({
+                                "text": heading,
+                                "embedding": generate_embedding(heading),
+                                "type": "heading"
+                            })
+                    for paragraph in data.get("paragraphs", []):
+                        embedded_data.append({
+                            "text": paragraph,
+                            "embedding": generate_embedding(paragraph),
+                            "type": "paragraph"
+                        })
+
         to_visit = next_to_visit
         current_depth += 1
 
-    # Generate embeddings for the titles, headings, and paragraphs
-    embedded_data = []
-    for item in scraped_data:
-        if item.get("title"):
-            embedding = generate_embedding(item["title"])
-            embedded_data.append({"text": item["title"], "embedding": embedding, "type": "title"})
-        
-        for heading_level, headings in item.get("headings", {}).items():
-            for heading in headings:
-                embedding = generate_embedding(heading)
-                embedded_data.append({"text": heading, "embedding": embedding, "type": "heading", "level": heading_level})
-
-        for paragraph in item.get("paragraphs", []):
-            embedding = generate_embedding(paragraph)
-            embedded_data.append({"text": paragraph, "embedding": embedding, "type": "paragraph"})
-
-    # Save deduplicated and embedded data to JSON
+    # Save the scraped data and embeddings
+    save_data_to_json(scraped_data)
     with open("embedded_data.json", "w", encoding="utf-8") as f:
         json.dump(embedded_data, f, ensure_ascii=False, indent=4)
 
