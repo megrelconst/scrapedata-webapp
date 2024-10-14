@@ -3,11 +3,8 @@ from pydantic import BaseModel
 from scraper.scraper import scrape_domain, save_data_to_json
 import json
 import os
-import openai
 import logging
 from openai import OpenAI
-
-client = OpenAI()
 
 # Create an instance of FastAPI
 app = FastAPI()
@@ -21,6 +18,12 @@ def load_config():
         return json.load(f)
 
 config = load_config()
+
+# Set up OpenAI client
+client = OpenAI(
+    organization=os.getenv("OPENAI_ORGANIZATION"),
+    project=os.getenv("OPENAI_PROJECT_ID")
+)
 
 # Root endpoint to handle requests to the base URL
 @app.get("/")
@@ -51,17 +54,15 @@ class QueryRequest(BaseModel):
 @app.post("/query")
 def query_openai(request: QueryRequest):
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",  # Updated model based on the latest OpenAI documentation
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": request.prompt}
-            ],
-            max_tokens=100,
-            temperature=0.7  # Added temperature parameter
+            ]
         )
-        logging.info(f"OpenAI Response: {response}")  # Log the full response from OpenAI for debugging
-        # Corrected the way the response is accessed based on the latest OpenAI response structure
-        return {"response": response['choices'][0]['message']['content'].strip()}
+        logging.info(f"OpenAI Response: {completion}")  # Log the full response from OpenAI for debugging
+        return {"response": completion.choices[0].message}
     except KeyError as e:
         logging.error(f"KeyError accessing response content: {str(e)}")
         return {"error": f"KeyError: {str(e)}"}
@@ -82,7 +83,7 @@ def get_scraped_data():
 # Temporary endpoint to check if the API key is set
 @app.get("/check-api-key")
 def check_api_key():
-    api_key = openai.api_key
+    api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         return {"message": "API key is set correctly."}
     else:
