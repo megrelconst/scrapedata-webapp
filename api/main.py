@@ -49,19 +49,50 @@ def scrape(max_depth: int = 2):
 class QueryRequest(BaseModel):
     prompt: str
 
-# Endpoint to query OpenAI with a prompt
+# Function to extract relevant context from scraped data based on the query
+def get_relevant_context(scraped_data, prompt):
+    context = ""
+    for item in scraped_data:
+        # Search titles, headings, and paragraphs for relevance to the prompt
+        if prompt.lower() in item.get('title', '').lower():
+            context += f"Title: {item['title']}\n"
+        if any(prompt.lower() in heading.lower() for heading in item.get('headings', {}).values()):
+            context += f"Headings: {item['headings']}\n"
+        relevant_paragraphs = [p for p in item.get('paragraphs', []) if prompt.lower() in p.lower()]
+        if relevant_paragraphs:
+            context += f"Paragraphs: {relevant_paragraphs}\n"
+        # Limit the size of the context to avoid exceeding token limits
+        if len(context) > 2000:
+            break
+    return context if context else "No relevant context found."
+
+# Endpoint to query OpenAI with a prompt based on scraped data
 @app.post("/query")
 def query_openai(request: QueryRequest):
     try:
+        # Load scraped data
+        try:
+            with open("scraped_data.json", "r", encoding="utf-8") as f:
+                scraped_data = json.load(f)
+        except FileNotFoundError:
+            return {"error": "No scraped data found."}
+
+        # Get relevant context from the scraped data
+        context = get_relevant_context(scraped_data, request.prompt)
+
+        # Update the prompt to include the relevant context
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant. Use only the given context to answer questions, and if the information is not available, say 'I don't have the information in my dataset.'"},
+            {"role": "user", "content": f"Context: {context}\n\nQuestion: {request.prompt}"}
+        ]
+
         completion = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": request.prompt}
-            ]
+            messages=messages
         )
         logging.info(f"OpenAI Response: {completion}")  # Log the full response from OpenAI for debugging
         return {"response": completion.choices[0].message}
+
     except KeyError as e:
         logging.error(f"KeyError accessing response content: {str(e)}")
         return {"error": f"KeyError: {str(e)}"}
