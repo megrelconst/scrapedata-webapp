@@ -23,7 +23,6 @@ def load_config():
 config = load_config()
 
 
-
 # Root endpoint to handle requests to the base URL
 @app.get("/")
 def read_root():
@@ -54,11 +53,17 @@ def get_relevant_context(scraped_data, prompt):
     context = ""
     for item in scraped_data:
         # Search titles, headings, and paragraphs for relevance to the prompt
-        if prompt.lower() in item.get('title', '').lower():
+        if isinstance(item.get('title', ''), str) and prompt.lower() in item.get('title', '').lower():
             context += f"Title: {item['title']}\n"
-        if any(prompt.lower() in heading.lower() for heading in item.get('headings', {}).values()):
-            context += f"Headings: {item['headings']}\n"
-        relevant_paragraphs = [p for p in item.get('paragraphs', []) if prompt.lower() in p.lower()]
+        if isinstance(item.get('headings', {}), dict):
+            for heading in item['headings'].values():
+                if isinstance(heading, list):
+                    for sub_heading in heading:
+                        if prompt.lower() in sub_heading.lower():
+                            context += f"Heading: {sub_heading}\n"
+                elif isinstance(heading, str) and prompt.lower() in heading.lower():
+                    context += f"Heading: {heading}\n"
+        relevant_paragraphs = [p for p in item.get('paragraphs', []) if isinstance(p, str) and prompt.lower() in p.lower()]
         if relevant_paragraphs:
             context += f"Paragraphs: {relevant_paragraphs}\n"
         # Limit the size of the context to avoid exceeding token limits
@@ -66,7 +71,7 @@ def get_relevant_context(scraped_data, prompt):
             break
     return context if context else "No relevant context found."
 
-# Endpoint to query OpenAI with a prompt based on scraped data
+# Endpoint to query OpenAI with a prompt
 @app.post("/query")
 def query_openai(request: QueryRequest):
     try:
@@ -92,7 +97,6 @@ def query_openai(request: QueryRequest):
         )
         logging.info(f"OpenAI Response: {completion}")  # Log the full response from OpenAI for debugging
         return {"response": completion.choices[0].message}
-
     except KeyError as e:
         logging.error(f"KeyError accessing response content: {str(e)}")
         return {"error": f"KeyError: {str(e)}"}
