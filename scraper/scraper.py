@@ -1,12 +1,25 @@
 from bs4 import BeautifulSoup
 import requests
 import json
+import os
+import openai
 from datetime import datetime
+
+# Set up OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Load configuration from config.json
 def load_config():
     with open("config.json", "r") as f:
         return json.load(f)
+
+# Function to generate embeddings using OpenAI API
+def generate_embedding(text):
+    response = openai.Embedding.create(
+        input=text,
+        model="text-embedding-ada-002"
+    )
+    return response['data'][0]['embedding']
 
 # Scrape a single website page
 def scrape_website(url):
@@ -65,6 +78,26 @@ def scrape_domain(domain_url, max_depth=None):
                     next_to_visit.extend(data.get("links", []))
         to_visit = next_to_visit
         current_depth += 1
+
+    # Generate embeddings for the titles, headings, and paragraphs
+    embedded_data = []
+    for item in scraped_data:
+        if item.get("title"):
+            embedding = generate_embedding(item["title"])
+            embedded_data.append({"text": item["title"], "embedding": embedding, "type": "title"})
+        
+        for heading_level, headings in item.get("headings", {}).items():
+            for heading in headings:
+                embedding = generate_embedding(heading)
+                embedded_data.append({"text": heading, "embedding": embedding, "type": "heading", "level": heading_level})
+
+        for paragraph in item.get("paragraphs", []):
+            embedding = generate_embedding(paragraph)
+            embedded_data.append({"text": paragraph, "embedding": embedding, "type": "paragraph"})
+
+    # Save deduplicated and embedded data to JSON
+    with open("embedded_data.json", "w", encoding="utf-8") as f:
+        json.dump(embedded_data, f, ensure_ascii=False, indent=4)
 
     return scraped_data
 

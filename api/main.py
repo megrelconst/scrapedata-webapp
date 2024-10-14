@@ -5,6 +5,8 @@ import json
 import os
 import logging
 from openai import OpenAI
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Create an instance of FastAPI
 app = FastAPI()
@@ -22,6 +24,13 @@ def load_config():
 
 config = load_config()
 
+# Function to generate embeddings using OpenAI API
+def generate_embedding(text):
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-ada-002"
+    )
+    return response['data'][0]['embedding']
 
 # Root endpoint to handle requests to the base URL
 @app.get("/")
@@ -40,7 +49,47 @@ def scrape(max_depth: int = 2):
 
     # Scrape the domain
     data = scrape_domain(url, max_depth=max_depth)
-    save_data_to_json(data)
+
+    # Deduplicate and organize data
+    unique_data = {
+        "titles": set(),
+        "headings": set(),
+        "paragraphs": set(),
+        "links": set()
+    }
+
+    for item in data:
+        if 'title' in item and item['title']:
+            unique_data['titles'].add(item['title'])
+        if 'headings' in item:
+            for heading_list in item['headings'].values():
+                if isinstance(heading_list, list):
+                    unique_data['headings'].update(heading_list)
+                elif isinstance(heading_list, str):
+                    unique_data['headings'].add(heading_list)
+        if 'paragraphs' in item:
+            unique_data['paragraphs'].update(item['paragraphs'])
+        if 'links' in item:
+            unique_data['links'].update(item['links'])
+
+    # Convert sets back to lists for JSON serialization
+    for key in unique_data:
+        unique_data[key] = list(unique_data[key])
+
+    # Generate embeddings for the paragraphs, titles, and headings
+    embedded_data = []
+    for key in ["titles", "headings", "paragraphs"]:
+        for text in unique_data[key]:
+            embedding = generate_embedding(text)
+            embedded_data.append({
+                "text": text,
+                "embedding": embedding,
+                "type": key
+            })
+
+    # Save deduplicated, organized, and embedded data
+    with open("embedded_data.json", "w", encoding="utf-8") as f:
+        json.dump(embedded_data, f, ensure_ascii=False, indent=4)
     
     return {"message": "Scraping completed successfully.", "pages_scraped": len(data)}
 
@@ -48,48 +97,37 @@ def scrape(max_depth: int = 2):
 class QueryRequest(BaseModel):
     prompt: str
 
-# Function to extract relevant context from scraped data based on the query
-def get_relevant_context(scraped_data, prompt):
-    context = ""
-    for item in scraped_data:
-        # Search titles, headings, paragraphs, and links for relevance to the prompt
-        if isinstance(item.get('title', ''), str) and prompt.lower() in item.get('title', '').lower():
-            context += f"Title: {item['title']}\n"
-        if isinstance(item.get('headings', {}), dict):
-            for heading_key, heading_value in item['headings'].items():
-                if isinstance(heading_value, list):
-                    for sub_heading in heading_value:
-                        if prompt.lower() in sub_heading.lower():
-                            context += f"{heading_key}: {sub_heading}\n"
-                elif isinstance(heading_value, str) and prompt.lower() in heading_value.lower():
-                    context += f"{heading_key}: {heading_value}\n"
-        relevant_paragraphs = [p for p in item.get('paragraphs', []) if isinstance(p, str) and prompt.lower() in p.lower()]
-        if relevant_paragraphs:
-            context += f"Paragraphs: {' '.join(relevant_paragraphs)}\n"
+# Function to find the most relevant context based on query embeddings
+def get_relevant_context(embedded_data, query_embedding, top_k=3):
+    # Extract embeddings and texts
+    embeddings = [np.array(item['embedding']) for item in embedded_data]
+    texts = [item['text'] for item in embedded_data]
 
-        relevant_links = [link for link in item.get('links', []) if isinstance(link, str) and prompt.lower() in link.lower()]
-        if relevant_links:
-            context += f"Links: {', '.join(relevant_links)}\n"
+    # Calculate cosine similarity between query embedding and stored embeddings
+    similarities = cosine_similarity([query_embedding], embeddings)[0]
 
-        # Increase the size limit or dynamically handle it to ensure more relevant context is gathered
-        if len(context) > 5000:  # Increased context size limit to 5000 characters
-            break
+    # Get top_k most similar texts
+    top_indices = np.argsort(similarities)[-top_k:]
+    relevant_context = "\n".join([texts[i] for i in reversed(top_indices)])
 
-    return context if context else "No relevant context found."
+    return relevant_context
 
 # Endpoint to query OpenAI with a prompt
 @app.post("/query")
 def query_openai(request: QueryRequest):
     try:
-        # Load scraped data
+        # Load embedded data
         try:
-            with open("scraped_data.json", "r", encoding="utf-8") as f:
-                scraped_data = json.load(f)
+            with open("embedded_data.json", "r", encoding="utf-8") as f:
+                embedded_data = json.load(f)
         except FileNotFoundError:
-            return {"error": "No scraped data found."}
+            return {"error": "No embedded data found."}
 
-        # Get relevant context from the scraped data
-        context = get_relevant_context(scraped_data, request.prompt)
+        # Generate embedding for the query
+        query_embedding = generate_embedding(request.prompt)
+
+        # Get relevant context using embeddings
+        context = get_relevant_context(embedded_data, query_embedding)
 
         # Update the prompt to include the relevant context
         messages = [
@@ -102,42 +140,7 @@ def query_openai(request: QueryRequest):
             messages=messages
         )
         logging.info(f"OpenAI Response: {completion}")  # Log the full response from OpenAI for debugging
-
-        return {"response": completion.choices[0].message.content}  # Corrected to access message content
-    except KeyError as e:
-        logging.error(f"KeyError accessing response content: {str(e)}")
-        return {"error": f"KeyError: {str(e)}"}
-    except Exception as e:
-        logging.error(f"Exception occurred: {str(e)}")
-        return {"error": str(e)}
-
-
-# Endpoint to query OpenAI with a prompt
-@app.post("/query")
-def query_openai(request: QueryRequest):
-    try:
-        # Load scraped data
-        try:
-            with open("scraped_data.json", "r", encoding="utf-8") as f:
-                scraped_data = json.load(f)
-        except FileNotFoundError:
-            return {"error": "No scraped data found."}
-
-        # Get relevant context from the scraped data
-        context = get_relevant_context(scraped_data, request.prompt)
-
-        # Update the prompt to include the relevant context
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant. Use only the given context to answer questions, and if the information is not available, say 'I don't have the information in my dataset.'"},
-            {"role": "user", "content": f"Context: {context}\n\nQuestion: {request.prompt}"}
-        ]
-
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages
-        )
-        logging.info(f"OpenAI Response: {completion}")  # Log the full response from OpenAI for debugging
-        return {"response": completion.choices[0].message}
+        return {"response": completion.choices[0].message.content}
     except KeyError as e:
         logging.error(f"KeyError accessing response content: {str(e)}")
         return {"error": f"KeyError: {str(e)}"}
