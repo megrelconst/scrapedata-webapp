@@ -9,6 +9,9 @@ from openai import OpenAI
 # Create an instance of FastAPI
 app = FastAPI()
 
+# Set up OpenAI client
+client = OpenAI()
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
@@ -19,11 +22,7 @@ def load_config():
 
 config = load_config()
 
-# Set up OpenAI client
-client = OpenAI(
-    organization=os.getenv("OPENAI_ORGANIZATION"),
-    project=os.getenv("OPENAI_PROJECT_ID")
-)
+
 
 # Root endpoint to handle requests to the base URL
 @app.get("/")
